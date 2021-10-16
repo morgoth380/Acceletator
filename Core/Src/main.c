@@ -27,11 +27,34 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
+typedef enum{
+	MOVE_WAIT = 0,
+	LED_ON = 1
+}ledStateType;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define FIFO_CTRL 0x2E
+
+#define OUT_X_L_A 0x28
+#define OUT_X_H_A 0x29
+
+#define OUT_Y_L_A 0x2A
+#define OUT_Y_H_A 0x2B
+
+#define OUT_Z_L_A 0x2C
+#define OUT_Z_H_A 0x2D
+
+#define CTRL_REG4 0x1E
+#define CTRL_REG1_A 0x20
+#define CTRL_REG5_XL 0x1F
+
+#define INT_GEN_THS_Z_XL 0x09
+#define INT_GEN_THS_Y_XL 0x08
+#define INT_GEN_THS_X_XL 0x07
+#define INT_GEN_CFG_XL 0x06
+#define INT1_CTRL 0x0C
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -41,6 +64,7 @@
 
 /* Private variables ---------------------------------------------------------*/
 I2C_HandleTypeDef hi2c1;
+uint16_t cmd;
 
 /* USER CODE BEGIN PV */
 
@@ -50,6 +74,7 @@ I2C_HandleTypeDef hi2c1;
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_I2C1_Init(void);
+void lsm303CInit(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -65,6 +90,16 @@ static void MX_I2C1_Init(void);
   */
 int main(void)
 {
+  uint16_t DevAddress;
+  uint16_t data;
+  uint8_t Rdata;
+  uint8_t RdataH;
+  uint16_t writeData;
+  int16_t accel_X, accel_Y, accel_Z;
+  float accelX, accelY, accelZ;
+  static ledStateType state = MOVE_WAIT;
+  static uint32_t startTick = 0;
+  uint32_t tickVal;
   /* USER CODE BEGIN 1 */
 
   /* USER CODE END 1 */
@@ -88,6 +123,7 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_I2C1_Init();
+  lsm303CInit();
   /* USER CODE BEGIN 2 */
 
   /* USER CODE END 2 */
@@ -97,6 +133,37 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
+	  DevAddress = 0x3A; //Адрес акселерометра по умолчанию
+
+	  //Ускорение по оси X
+	  data = OUT_X_L_A;
+	  HAL_I2C_Master_Transmit(&hi2c1, DevAddress, (uint8_t *)(&data), 1, 1000);
+	  HAL_I2C_Master_Receive(&hi2c1, DevAddress, (uint8_t *)&Rdata, 1, 1000);
+	  data = OUT_X_H_A;
+	  HAL_I2C_Master_Transmit(&hi2c1, DevAddress, (uint8_t *)(&data), 1, 1000);
+	  HAL_I2C_Master_Receive(&hi2c1, DevAddress, (uint8_t *)&RdataH, 1, 1000);
+	  accel_X = (int16_t)((uint16_t)Rdata | ((uint16_t)RdataH << 8));
+	  accelX = (2.0 / 32767) * accel_X; //Ускорение по оси X
+
+	  //Ускорение по оси Y
+	  data = OUT_Y_L_A;
+	  HAL_I2C_Master_Transmit(&hi2c1, DevAddress, (uint8_t *)(&data), 1, 1000);
+	  HAL_I2C_Master_Receive(&hi2c1, DevAddress, (uint8_t *)&Rdata, 1, 1000);
+	  data = OUT_Y_H_A;
+	  HAL_I2C_Master_Transmit(&hi2c1, DevAddress, (uint8_t *)(&data), 1, 1000);
+	  HAL_I2C_Master_Receive(&hi2c1, DevAddress, (uint8_t *)&RdataH, 1, 1000);
+	  accel_Y = (int16_t)((uint16_t)Rdata | ((uint16_t)RdataH << 8));
+	  accelY = (2.0 / 32767) * accel_Y; //Ускорение по оси Y
+
+	  //Ускорение по оси Z
+	  data = OUT_Z_L_A;
+	  HAL_I2C_Master_Transmit(&hi2c1, DevAddress, (uint8_t *)(&data), 1, 1000);
+	  HAL_I2C_Master_Receive(&hi2c1, DevAddress, (uint8_t *)&Rdata, 1, 1000);
+	  data = OUT_Z_H_A;
+	  HAL_I2C_Master_Transmit(&hi2c1, DevAddress, (uint8_t *)(&data), 1, 1000);
+	  HAL_I2C_Master_Receive(&hi2c1, DevAddress, (uint8_t *)&RdataH, 1, 1000);
+	  accel_Z = (int16_t)((uint16_t)Rdata | ((uint16_t)RdataH << 8));
+	  accelZ = (2.0 / 32767) * accel_Z; //Ускорение по оси Y
 
     /* USER CODE BEGIN 3 */
   }
@@ -179,6 +246,20 @@ static void MX_I2C1_Init(void)
   /* USER CODE END I2C1_Init 2 */
 
 }
+
+//Настройка режима работы чипа акселерометра
+void lsm303CInit(void)
+{
+	uint8_t DevAddress;
+	uint16_t writeData;
+
+	DevAddress = 0x3A;
+	writeData = CTRL_REG1_A;
+	writeData = (uint16_t)writeData | ((uint16_t)0x17 << 8);
+	HAL_I2C_Master_Transmit(&hi2c1, DevAddress, (uint8_t *)(&writeData), 2, 1000);
+	return;
+}
+
 
 /**
   * @brief GPIO Initialization Function
