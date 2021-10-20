@@ -31,6 +31,18 @@ typedef enum{
 	MOVE_WAIT = 0,
 	LED_ON = 1
 }ledStateType;
+
+typedef struct{
+	float Xaccel;
+	float Yaccel;
+	float Zaccel;
+}accelsDataType;
+
+typedef struct{
+	float Xaccel;
+	float Yaccel;
+	float Zaccel;
+}prevAccelsDataType;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -75,6 +87,9 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_I2C1_Init(void);
 void lsm303CInit(void);
+void getAccels(accelsDataType *accelsData);
+void getFirstAccels(prevAccelsDataType *prevAccelsData);
+uint16_t movementDetection(prevAccelsDataType *prevAccelsData, accelsDataType *accelsData);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -90,16 +105,8 @@ void lsm303CInit(void);
   */
 int main(void)
 {
-  uint16_t DevAddress;
-  uint16_t data;
-  uint8_t Rdata;
-  uint8_t RdataH;
-  uint16_t writeData;
-  int16_t accel_X, accel_Y, accel_Z;
-  float accelX, accelY, accelZ;
-  static ledStateType state = MOVE_WAIT;
-  static uint32_t startTick = 0;
-  uint32_t tickVal;
+	accelsDataType accelsData;
+	static prevAccelsDataType prevAccelsData = {0.0F, 0.0F, 0.0F};
   /* USER CODE BEGIN 1 */
 
   /* USER CODE END 1 */
@@ -125,7 +132,7 @@ int main(void)
   MX_I2C1_Init();
   lsm303CInit();
   /* USER CODE BEGIN 2 */
-
+  getFirstAccels(&prevAccelsData);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -133,38 +140,8 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
-	  DevAddress = 0x3A; //Адрес акселерометра по умолчанию
-
-	  //Ускорение по оси X
-	  data = OUT_X_L_A;
-	  HAL_I2C_Master_Transmit(&hi2c1, DevAddress, (uint8_t *)(&data), 1, 1000);
-	  HAL_I2C_Master_Receive(&hi2c1, DevAddress, (uint8_t *)&Rdata, 1, 1000);
-	  data = OUT_X_H_A;
-	  HAL_I2C_Master_Transmit(&hi2c1, DevAddress, (uint8_t *)(&data), 1, 1000);
-	  HAL_I2C_Master_Receive(&hi2c1, DevAddress, (uint8_t *)&RdataH, 1, 1000);
-	  accel_X = (int16_t)((uint16_t)Rdata | ((uint16_t)RdataH << 8));
-	  accelX = (2.0 / 32767) * accel_X; //Ускорение по оси X
-
-	  //Ускорение по оси Y
-	  data = OUT_Y_L_A;
-	  HAL_I2C_Master_Transmit(&hi2c1, DevAddress, (uint8_t *)(&data), 1, 1000);
-	  HAL_I2C_Master_Receive(&hi2c1, DevAddress, (uint8_t *)&Rdata, 1, 1000);
-	  data = OUT_Y_H_A;
-	  HAL_I2C_Master_Transmit(&hi2c1, DevAddress, (uint8_t *)(&data), 1, 1000);
-	  HAL_I2C_Master_Receive(&hi2c1, DevAddress, (uint8_t *)&RdataH, 1, 1000);
-	  accel_Y = (int16_t)((uint16_t)Rdata | ((uint16_t)RdataH << 8));
-	  accelY = (2.0 / 32767) * accel_Y; //Ускорение по оси Y
-
-	  //Ускорение по оси Z
-	  data = OUT_Z_L_A;
-	  HAL_I2C_Master_Transmit(&hi2c1, DevAddress, (uint8_t *)(&data), 1, 1000);
-	  HAL_I2C_Master_Receive(&hi2c1, DevAddress, (uint8_t *)&Rdata, 1, 1000);
-	  data = OUT_Z_H_A;
-	  HAL_I2C_Master_Transmit(&hi2c1, DevAddress, (uint8_t *)(&data), 1, 1000);
-	  HAL_I2C_Master_Receive(&hi2c1, DevAddress, (uint8_t *)&RdataH, 1, 1000);
-	  accel_Z = (int16_t)((uint16_t)Rdata | ((uint16_t)RdataH << 8));
-	  accelZ = (2.0 / 32767) * accel_Z; //Ускорение по оси Y
-
+	  getAccels(&accelsData);
+	  movementDetection(&prevAccelsData, &accelsData);
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
@@ -258,6 +235,101 @@ void lsm303CInit(void)
 	writeData = (uint16_t)writeData | ((uint16_t)0x17 << 8);
 	HAL_I2C_Master_Transmit(&hi2c1, DevAddress, (uint8_t *)(&writeData), 2, 1000);
 	return;
+}
+
+void getAccels(accelsDataType *accelsData)
+{
+	int16_t accel_X, accel_Y, accel_Z;
+	uint8_t DevAddress;
+	uint8_t data;
+	uint8_t RdataL, RdataH;
+	float accelX, accelY, accelZ;
+
+	DevAddress = 0x3A; //Адрес акселерометра по умолчанию
+
+	//Ускорение по оси X
+	data = OUT_X_L_A;
+	HAL_I2C_Master_Transmit(&hi2c1, DevAddress, (uint8_t *)(&data), 1, 1000);
+	HAL_I2C_Master_Receive(&hi2c1, DevAddress, (uint8_t *)&RdataL, 1, 1000);
+
+	data = OUT_X_H_A;
+	HAL_I2C_Master_Transmit(&hi2c1, DevAddress, (uint8_t *)(&data), 1, 1000);
+	HAL_I2C_Master_Receive(&hi2c1, DevAddress, (uint8_t *)&RdataH, 1, 1000);
+
+	accel_X = (int16_t)((uint16_t)RdataL | ((uint16_t)RdataH << 8));
+	accelX = (2.0 / 32767) * accel_X; //Ускорение по оси X
+
+	//Ускорение по оси Y
+	data = OUT_Y_L_A;
+	HAL_I2C_Master_Transmit(&hi2c1, DevAddress, (uint8_t *)(&data), 1, 1000);
+	HAL_I2C_Master_Receive(&hi2c1, DevAddress, (uint8_t *)&RdataL, 1, 1000);
+
+	data = OUT_Y_H_A;
+	HAL_I2C_Master_Transmit(&hi2c1, DevAddress, (uint8_t *)(&data), 1, 1000);
+	HAL_I2C_Master_Receive(&hi2c1, DevAddress, (uint8_t *)&RdataH, 1, 1000);
+
+	accel_Y = (int16_t)((uint16_t)RdataL | ((uint16_t)RdataH << 8));
+	accelY = (2.0 / 32767) * accel_Y; //Ускорение по оси Y
+
+	//Ускорение по оси Z
+	data = OUT_Z_L_A;
+    HAL_I2C_Master_Transmit(&hi2c1, DevAddress, (uint8_t *)(&data), 1, 1000);
+	HAL_I2C_Master_Receive(&hi2c1, DevAddress, (uint8_t *)&RdataL, 1, 1000);
+
+	data = OUT_Z_H_A;
+	HAL_I2C_Master_Transmit(&hi2c1, DevAddress, (uint8_t *)(&data), 1, 1000);
+	HAL_I2C_Master_Receive(&hi2c1, DevAddress, (uint8_t *)&RdataH, 1, 1000);
+
+	accel_Z = (int16_t)((uint16_t)RdataL | ((uint16_t)RdataH << 8));
+	accelZ = (2.0 / 32767) * accel_Z; //Ускорение по оси Y
+
+	accelsData->Xaccel = accelX;
+	accelsData->Yaccel = accelY;
+	accelsData->Zaccel = accelZ;
+}
+
+void getFirstAccels(prevAccelsDataType *prevAccelsData)
+{
+	accelsDataType accelsData;
+
+	getAccels(&accelsData);
+	prevAccelsData->Xaccel = accelsData.Xaccel;
+	prevAccelsData->Yaccel = accelsData.Yaccel;
+	prevAccelsData->Zaccel = accelsData.Zaccel;
+}
+
+uint16_t movementDetection(prevAccelsDataType *prevAccelsData, accelsDataType *accelsData)
+{
+	int16_t prevX, prevY, prevZ;
+	int16_t newX, newY, newZ;
+	int16_t moveFlg;
+
+	moveFlg = 0;
+
+	prevX = (int16_t)(prevAccelsData->Xaccel * 10.0F + 0.5F);
+	prevY = (int16_t)(prevAccelsData->Yaccel * 10.0F + 0.5F);
+	prevZ = (int16_t)(prevAccelsData->Zaccel * 10.0F + 0.5F);
+
+	newX = (int16_t)(accelsData->Xaccel * 10.0F + 0.5F);
+	newY = (int16_t)(accelsData->Yaccel * 10.0F + 0.5F);
+	newZ = (int16_t)(accelsData->Zaccel * 10.0F + 0.5F);
+
+	if(prevX != newX){
+		moveFlg = 1;
+		prevAccelsData->Xaccel = accelsData->Xaccel;
+	}
+
+	if(prevY != newY){
+		moveFlg = 1;
+		prevAccelsData->Yaccel = accelsData->Yaccel;
+	}
+
+	if(prevZ != newZ){
+		moveFlg = 1;
+		prevAccelsData->Zaccel = accelsData->Zaccel;
+	}
+
+	return(moveFlg);
 }
 
 
